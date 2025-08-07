@@ -1,8 +1,10 @@
+import customtkinter as ctk
 import tkinter as tk
 from tkinter import ttk, messagebox
-import json, os, time
+from tkcalendar import DateEntry
+import tkinter.font as tkFont
+import json, os, time, threading
 from datetime import datetime
-import threading
 import pyttsx3
 import pywhatkit
 
@@ -13,12 +15,10 @@ def load_data():
     if os.path.exists(FILE):
         data = json.load(open(FILE))
         for e in data:
-            if "done" not in e:
-                e["done"] = False
-            if "phone" not in e:
-                e["phone"] = ""
-            if "time" not in e:
-                e["time"] = ""
+            e.setdefault("done", False)
+            e.setdefault("phone", "")
+            e.setdefault("time", "")
+            e.setdefault("description", "")
         return data
     return []
 
@@ -31,39 +31,63 @@ def speak(text):
     engine.say(text)
     engine.runAndWait()
 
-# -------------------- WhatsApp Sender -------------------- #
-def send_whatsapp_message(phone, message):
+# -------------------- WhatsApp -------------------- #
+def send_whatsapp_message(phone, event):
     try:
         now = datetime.now()
         send_hour = now.hour
-        send_minute = now.minute + 1  # PyWhatKit needs 1 min lead time
+        send_minute = now.minute + 1
+        
+        # Beautiful formatted message
+        message = (
+            f"📌 Event Reminder\n"
+            f"📅 Date: {event['date']}\n"
+            f"🕒 Time: {event['time']}\n"
+            f"📍 Event: {event['name']}\n"
+            f"📝 Notes: {event['description']}"
+        )
+        
         pywhatkit.sendwhatmsg(phone, message, send_hour, send_minute)
     except Exception as e:
         print("WhatsApp Error:", e)
 
+
 # -------------------- Event Functions -------------------- #
 def add_event():
+    global edit_index
     name = name_var.get().strip()
-    date = date_var.get().strip()
+    date_str = date_var.get_date().strftime("%Y-%m-%d")
     time_str = time_var.get().strip()
     phone = phone_var.get().strip()
-    
-    if name and date and time_str:
+    desc = desc_var.get().strip()
+
+    if not name or not date_str or not time_str:
+        messagebox.showwarning("Input", "Please fill in Event Name, Date, and Time.")
+        return
+
+    if edit_index == -1:
         events.append({
             "name": name,
-            "date": date,
+            "date": date_str,
             "time": time_str,
             "phone": phone,
+            "description": desc,
             "done": False
         })
-        save_data()
-        refresh()
-        name_var.set("")
-        date_var.set("")
-        time_var.set("")
-        phone_var.set("")
     else:
-        messagebox.showwarning("Input", "Enter event name, date, and time.")
+        events[edit_index].update({
+            "name": name,
+            "date": date_str,
+            "time": time_str,
+            "phone": phone,
+            "description": desc
+        })
+        edit_index = -1
+        add_btn.configure(text="Add Event")
+
+    save_data()
+    clear_inputs()
+    refresh()
 
 def delete_event():
     selected = tree.selection()
@@ -81,12 +105,49 @@ def mark_done():
         save_data()
         refresh()
 
-def refresh():
+def edit_event():
+    global edit_index
+    selected = tree.selection()
+    if selected:
+        idx = int(selected[0])
+        e = events[idx]
+        name_var.set(e["name"])
+        date_var.set_date(datetime.strptime(e["date"], "%Y-%m-%d"))
+        time_var.set(e["time"])
+        phone_var.set(e["phone"])
+        desc_var.set(e["description"])
+        edit_index = idx
+        add_btn.configure(text="Save Changes")
+
+def clear_inputs():
+    name_var.set("")
+    time_var.set("")
+    phone_var.set("")
+    desc_var.set("")
+    date_var.set_date(datetime.now())
+
+# -------------------- Search & Filter -------------------- #
+def filter_events(*args):
+    search_text = search_var.get().lower()
     tree.delete(*tree.get_children())
     for i, e in enumerate(events):
-        tree.insert("", "end", iid=i,
-                    values=(e["name"], e["date"], e.get("time", ""), e.get("phone", ""), 
-                            "✔" if e.get("done", False) else ""))
+        if (search_text in e["name"].lower() or
+            search_text in e["description"].lower() or
+            search_text in e["date"]):
+            tree.insert("", "end", iid=i, values=(
+                e["name"], e["date"], e["time"], e["phone"], e["description"],
+                "✔" if e["done"] else ""
+            ))
+    auto_resize_columns()
+
+# -------------------- Auto Column Resize -------------------- #
+def auto_resize_columns():
+    for col in tree["columns"]:
+        tree.column(col, width=tkFont.Font().measure(col.title()) + 20)
+
+# -------------------- Refresh -------------------- #
+def refresh():
+    filter_events()
 
 # -------------------- Background Reminder Checker -------------------- #
 def reminder_checker():
@@ -94,64 +155,85 @@ def reminder_checker():
         now = datetime.now()
         today_str = now.strftime("%Y-%m-%d")
         current_time = now.strftime("%H:%M")
-        
+
         for e in events:
-            if e["date"] == today_str and e.get("time") == current_time and not e.get("done", False):
+            if e["date"] == today_str and e["time"] == current_time and not e["done"]:
                 speak(f"Reminder: {e['name']} is now.")
-                if e.get("phone"):
-                    send_whatsapp_message(e["phone"], f"Reminder: {e['name']} is now scheduled.")
+                if e["phone"]:
+                    send_whatsapp_message(e["phone"], e)
+
                 e["done"] = True
                 save_data()
                 refresh()
-        
-        time.sleep(30)  # check every 30 seconds
+
+        time.sleep(30)
 
 # -------------------- UI -------------------- #
-root = tk.Tk()
-root.title("Event Reminder")
-root.geometry("650x400")
+ctk.set_appearance_mode("system")
+ctk.set_default_color_theme("blue")
 
-# Variables
-name_var = tk.StringVar()
-date_var = tk.StringVar()
-time_var = tk.StringVar()
-phone_var = tk.StringVar()
+root = ctk.CTk()
+root.title("Event Reminder")
+root.geometry("900x600")
 
 events = load_data()
 
+edit_index = -1  # -1 means adding, >=0 means editing
+
+# Variables
+name_var = tk.StringVar()
+time_var = tk.StringVar()
+phone_var = tk.StringVar()
+desc_var = tk.StringVar()
+search_var = tk.StringVar()
+
+search_var.trace("w", filter_events)
+
 # Input Frame
-frame = tk.Frame(root)
-frame.pack(pady=10)
+input_frame = ctk.CTkFrame(root)
+input_frame.pack(pady=10, padx=10, fill="x")
 
-tk.Label(frame, text="Event Name:").grid(row=0, column=0, padx=5, pady=5)
-tk.Entry(frame, textvariable=name_var).grid(row=0, column=1, padx=5, pady=5)
+ctk.CTkLabel(input_frame, text="Event Name:").grid(row=0, column=0, padx=5, pady=5)
+ctk.CTkEntry(input_frame, textvariable=name_var).grid(row=0, column=1, padx=5, pady=5)
 
-tk.Label(frame, text="Date (YYYY-MM-DD):").grid(row=0, column=2, padx=5, pady=5)
-tk.Entry(frame, textvariable=date_var).grid(row=0, column=3, padx=5, pady=5)
+ctk.CTkLabel(input_frame, text="Date:").grid(row=0, column=2, padx=5, pady=5)
+date_var = DateEntry(input_frame, date_pattern="yyyy-mm-dd")
+date_var.grid(row=0, column=3, padx=5, pady=5)
 
-tk.Label(frame, text="Time (HH:MM):").grid(row=1, column=0, padx=5, pady=5)
-tk.Entry(frame, textvariable=time_var).grid(row=1, column=1, padx=5, pady=5)
+ctk.CTkLabel(input_frame, text="Time (HH:MM):").grid(row=1, column=0, padx=5, pady=5)
+ctk.CTkEntry(input_frame, textvariable=time_var).grid(row=1, column=1, padx=5, pady=5)
 
-tk.Label(frame, text="Phone (+CountryCodeNumber):").grid(row=1, column=2, padx=5, pady=5)
-tk.Entry(frame, textvariable=phone_var).grid(row=1, column=3, padx=5, pady=5)
+ctk.CTkLabel(input_frame, text="Phone (+CountryCodeNumber):").grid(row=1, column=2, padx=5, pady=5)
+ctk.CTkEntry(input_frame, textvariable=phone_var).grid(row=1, column=3, padx=5, pady=5)
 
-tk.Button(frame, text="Add Event", command=add_event).grid(row=2, column=0, columnspan=4, pady=5)
-
-# Treeview
-tree = ttk.Treeview(root, columns=("Event", "Date", "Time", "Phone", "Done"), show="headings")
-tree.heading("Event", text="Event Name")
-tree.heading("Date", text="Date")
-tree.heading("Time", text="Time")
-tree.heading("Phone", text="Phone")
-tree.heading("Done", text="Done")
-tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+ctk.CTkLabel(input_frame, text="Description:").grid(row=2, column=0, padx=5, pady=5)
+ctk.CTkEntry(input_frame, textvariable=desc_var, width=400).grid(row=2, column=1, columnspan=3, padx=5, pady=5)
 
 # Buttons
-btn_frame = tk.Frame(root)
+btn_frame = ctk.CTkFrame(root)
 btn_frame.pack(pady=5)
 
-tk.Button(btn_frame, text="Mark Done", command=mark_done).grid(row=0, column=0, padx=5)
-tk.Button(btn_frame, text="Delete Event", command=delete_event).grid(row=0, column=1, padx=5)
+add_btn = ctk.CTkButton(btn_frame, text="Add Event", command=add_event)
+add_btn.grid(row=0, column=0, padx=5)
+ctk.CTkButton(btn_frame, text="Edit Event", command=edit_event).grid(row=0, column=1, padx=5)
+ctk.CTkButton(btn_frame, text="Mark Done", command=mark_done).grid(row=0, column=2, padx=5)
+ctk.CTkButton(btn_frame, text="Delete Event", command=delete_event).grid(row=0, column=3, padx=5)
+
+# Search
+search_frame = ctk.CTkFrame(root)
+search_frame.pack(pady=5, fill="x")
+ctk.CTkLabel(search_frame, text="Search:").pack(side="left", padx=5)
+ctk.CTkEntry(search_frame, textvariable=search_var).pack(side="left", fill="x", expand=True, padx=5)
+
+# Treeview
+tree_frame = ctk.CTkFrame(root)
+tree_frame.pack(pady=10, padx=10, fill="both", expand=True)
+
+columns = ("Event", "Date", "Time", "Phone", "Description", "Done")
+tree = ttk.Treeview(tree_frame, columns=columns, show="headings")
+for col in columns:
+    tree.heading(col, text=col)
+tree.pack(fill="both", expand=True)
 
 refresh()
 

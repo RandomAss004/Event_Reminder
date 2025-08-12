@@ -189,13 +189,13 @@ def show_overview_page():
 def show_about():
     info = (
         "Event Reminder App\n"
-        "Contributors:\n"
-        "1. Shriven Muley\n"
-        "2. Atul Bawaskar\n"
-        "3. Om Singh\n"
-        "4. Aryan Gharat\n"
-        "5. Rohan Sarkate\n"
-        "6. Umar Patel\n"
+        "Leder:\n"
+        "Om A. Singh\n"
+        "1. Aryan Gharat\n"
+        "2. Rohan Sarkate\n"
+        "3. Umar Patel\n"
+        "4. Shriven Muley\n"
+        "5. Atul Bawaskar\n"
         "Version 1.8"
     )
     about_win = ctk.CTkToplevel(root)

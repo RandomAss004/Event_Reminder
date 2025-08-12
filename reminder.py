@@ -8,12 +8,13 @@ import pyttsx3
 import pywhatkit
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from tkcalendar import DateEntry  # new
-  
+from tkcalendar import DateEntry
+
 
 FILE = "events.json"
 editing_index = -1
 search_query = ""
+
 
 # -------------------- Data Handling -------------------- #
 def load_data():
@@ -31,12 +32,14 @@ def load_data():
             return []
     return []
 
+
 def save_data():
     try:
         with open(FILE, "w") as f:
             json.dump(events, f, indent=4)
     except Exception as e:
         print(f"Error saving data: {e}")
+
 
 # -------------------- Speech & Messaging -------------------- #
 def speak(text):
@@ -47,6 +50,7 @@ def speak(text):
     except Exception as e:
         print(f"Text-to-speech Error: {e}")
 
+
 def send_whatsapp_message(phone, message):
     try:
         now = datetime.now()
@@ -54,6 +58,7 @@ def send_whatsapp_message(phone, message):
         pywhatkit.sendwhatmsg(phone, message, send_time.hour, send_time.minute)
     except Exception as e:
         print(f"WhatsApp Error: {e}")
+
 
 # -------------------- Event Functions -------------------- #
 def add_or_update_event():
@@ -94,16 +99,19 @@ def add_or_update_event():
     refresh_event_table()
     add_update_btn.configure(text="Add Event ➕")
 
+
 def delete_event(idx):
     if ctk.CTkMessagebox(title="Delete Event", message="Are you sure?", icon="warning", option_1="Yes", option_2="No").get() == "Yes":
         events.pop(idx)
         save_data()
         refresh_event_table()
 
+
 def mark_done(idx):
     events[idx]["done"] = True
     save_data()
     refresh_event_table()
+
 
 def edit_event(idx):
     global editing_index
@@ -116,6 +124,7 @@ def edit_event(idx):
     note_var.set(e.get("note", ""))
     add_update_btn.configure(text="Save Changes ✏️")
 
+
 def clear_inputs():
     global editing_index
     name_var.set("")
@@ -125,6 +134,7 @@ def clear_inputs():
     note_var.set("")
     editing_index = -1
     add_update_btn.configure(text="Add Event ➕")
+
 
 def refresh_event_table():
     for row in table_frame.winfo_children():
@@ -146,14 +156,55 @@ def refresh_event_table():
         ctk.CTkButton(action_frame, text="Delete", width=55, fg_color="#FF5A5A", command=lambda idx=events.index(e): delete_event(idx)).pack(side="left", padx=1)
         action_frame.grid(row=idx+1, column=6, pady=1, sticky="nsew")
 
+
 def popup_message(msg):
     box = ctk.CTkMessagebox(title="Event Reminder", message=msg)
     box.get()
+
 
 def search_events():
     global search_query
     search_query = search_var.get().strip()
     refresh_event_table()
+
+
+# -------------------- Overview & About -------------------- #
+def show_overview_page():
+    overview_window = ctk.CTkToplevel(root)
+    overview_window.title("Event Overview")
+    overview_window.geometry("400x300")
+    total_events = len(events)
+    completed_events = sum(1 for e in events if e.get("done", False))
+    pending_events = total_events - completed_events
+    stats = [("Total Events", total_events), ("Completed Events", completed_events), ("Pending Events", pending_events)]
+    title_label = ctk.CTkLabel(overview_window, text="Event Statistics", font=("Helvetica", 16, "bold"))
+    title_label.pack(pady=(20, 10))
+    for stat, val in stats:
+        row = ctk.CTkFrame(overview_window)
+        ctk.CTkLabel(row, text=stat, width=180, anchor="w").pack(side="left", padx=6)
+        ctk.CTkLabel(row, text=str(val), width=100).pack(side="right", padx=6)
+        row.pack(fill="x", padx=20, pady=3)
+
+
+def show_about():
+    info = (
+        "Event Reminder App\n"
+        "Contributors:\n"
+        "1. Shriven Muley\n"
+        "2. Atul Bawaskar\n"
+        "3. Om Singh\n"
+        "4. Aryan Gharat\n"
+        "5. Rohan Sarkate\n"
+        "6. Umar Patel\n"
+        "Version 1.8"
+    )
+    about_win = ctk.CTkToplevel(root)
+    about_win.title("About")
+    about_win.geometry("320x280")
+    about_label = ctk.CTkLabel(about_win, text=info, justify="left", font=("Helvetica", 13))
+    about_label.pack(pady=20, padx=20)
+    ctk.CTkButton(about_win, text="OK", command=about_win.destroy).pack(pady=10)
+
 
 # -------------------- Background Reminder Checker -------------------- #
 def reminder_checker():
@@ -174,6 +225,7 @@ def reminder_checker():
                     continue
         time.sleep(30)
 
+
 # -------------------- Graph -------------------- #
 def calculate_daily_stats():
     daily_stats = {'Mon': 0, 'Tue': 0, 'Wed': 0, 'Thu': 0, 'Fri': 0, 'Sat': 0, 'Sun': 0}
@@ -191,6 +243,7 @@ def calculate_daily_stats():
             continue
     return daily_stats
 
+
 def update_weekly_stats_graph():
     daily_stats = calculate_daily_stats()
     days = list(daily_stats.keys())
@@ -203,19 +256,20 @@ def update_weekly_stats_graph():
     ax.set_title('Completed Events per Day (Current Week)')
     ax.set_xlabel('Day of the Week')
     ax.set_ylabel('Events Completed')
-    ax.set_ylim(0, max(counts)+1 if counts else 1)
+    ax.set_ylim(0, max(counts) + 1 if counts else 1)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
     fig.tight_layout()
     canvas = FigureCanvasTkAgg(fig, master=graph_window)
     canvas.get_tk_widget().pack(pady=10, padx=10, fill='both', expand=True)
     canvas.draw()
 
+
 # -------------------- UI Setup -------------------- #
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
 root = ctk.CTk()
 root.title("Event Reminder")
-root.geometry("950x750")
+root.geometry("980x750")
 root.resizable(True, True)
 
 name_var = ctk.StringVar()
@@ -266,7 +320,9 @@ table_frame.pack(fill="both", expand=True, padx=10, pady=10)
 btn_frame = ctk.CTkFrame(root)
 btn_frame.pack(pady=5, padx=10)
 ctk.CTkButton(btn_frame, text="View Graph", command=update_weekly_stats_graph).pack(side='left', padx=5)
+ctk.CTkButton(btn_frame, text="Overview Page", command=show_overview_page).pack(side='left', padx=5)
 ctk.CTkButton(btn_frame, text="Clear Inputs", command=clear_inputs).pack(side='left', padx=5)
+ctk.CTkButton(btn_frame, text="About", command=show_about).pack(side='left', padx=5)
 
 # Start reminder thread
 threading.Thread(target=reminder_checker, daemon=True).start()
